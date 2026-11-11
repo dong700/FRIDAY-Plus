@@ -1,0 +1,63 @@
+{
+  "scheduler": {
+    "memory_interval": "120",
+    "goal_interval": 14400,
+    "check_interval": 3600
+  },
+  "llm": {
+    "api_key": "<YOUR_KEY_HERE>",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-flash"
+  },
+  "viking_memory": {
+    "enabled": false,
+    "api_key": "<YOUR_KEY_HERE>",
+    "base_url": "https://api-knowledgebase.mlp.cn-beijing.volces.com",
+    "collection_name": "Active_AI"
+  },
+  "dialog": {
+    "app_id": "<YOUR_KEY_HERE>",
+    "access_key": "<YOUR_KEY_HERE>",
+    "resource_id": "volc.speech.dialog",
+    "app_key": "<YOUR_KEY_HERE>",
+    "base_url": "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
+  },
+  "voice_chat_v2": {
+    "app_id": "<YOUR_KEY_HERE>",
+    "app_key": "<YOUR_KEY_HERE>",
+    "ak": "<YOUR_KEY_HERE>",
+    "sk": "<YOUR_KEY_HERE>",
+    "api_host": "rtc.volcengineapi.com",
+    "llm_endpoint_id": "<YOUR_KEY_HERE>",
+    "ark_api_key": "<YOUR_KEY_HERE>",
+    "llm_model": "doubao-seed-1-6-251015",
+    "dialog_app_id": "<YOUR_KEY_HERE>",
+    "dialog_access_key": "<YOUR_KEY_HERE>",
+    "dialog_app_key": "<YOUR_KEY_HERE>",
+    "asr_app_id": "<YOUR_KEY_HERE>",
+    "asr_token": "<YOUR_KEY_HERE>",
+    "asr_resource_id": "volc.seedasr.sauc.duration",
+    "tts_app_id": "<YOUR_KEY_HERE>",
+    "tts_token": "<YOUR_KEY_HERE>",
+    "tts_resource_id": "volc.service_type.10029",
+    "tts_speaker": "zh_male_qingshuangnanda_mars_bigtts",
+    "vision_enabled": true,
+    "vision_interval": 1000,
+    "vision_images_limit": 2,
+    "api_version": "2024-12-01"
+  },
+  "tavily": {
+    "api_key": "<YOUR_KEY_HERE>",
+    "max_results": 5
+  },
+  "roarm": {
+    "mode": "http",
+    "http_ip": "192.168.4.1",
+    "http_port": 80,
+    "serial_port": "",
+    "serial_baudrate": 115200,
+    "timeout": 5
+  },
+  "data_dir": "data",
+  "log_level": "INFO"
+}

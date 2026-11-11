@@ -1,0 +1,29 @@
+# ============ 核心依赖（必须）============
+# LLM
+openai>=1.0.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+
+# WebSocket
+websockets>=12.0
+
+# HTTP Client (Viking memory, web search, mechanical arm)
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# Math (intrinsic reward)
+numpy>=1.24.0
+
+# ============ 可选依赖（安装失败不影响启动）============
+# Scheduler
+apscheduler>=3.10.0
+
+# Desktop window (fallback to browser if missing)
+pywebview>=5.0
+
+# Audio (需要 C++ 编译环境，安装失败则语音对话不可用)
+# 如果 pip install 失败，可尝试: pip install pipwin && pipwin install pyaudio
+pyaudio>=0.2.13

@@ -1,0 +1,40 @@
+# ---------- 密钥与本地配置（绝不入库） ----------
+backend/config/config.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# ---------- 运行时数据 ----------
+backend/data/
+data/
+*.jsonl
+*.log
+*.tmp
+*.bak
+
+# ---------- Node / Electron ----------
+node_modules/
+electron/node_modules/
+
+# ---------- 前端调试产物（dist 本身要保留：src 不可独立构建） ----------
+backend/frontend/dist/**/*.map
+
+# ---------- 编辑器 / 系统 / 本机 ----------
+.trae/
+.screenshots/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 临时目录 ----------
+.dsh-tmp/
+.dsh-uploads/
+.trae-html-share-packages/

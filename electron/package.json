@@ -1,0 +1,13 @@
+{
+  "name": "friday-pet",
+  "version": "1.0.0",
+  "main": "main.js",
+  "private": true,
+  "description": "FRIDAY 桌宠窗口（透明无边框，Electron）",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.2.1"
+  }
+}
