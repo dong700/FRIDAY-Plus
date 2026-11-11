@@ -11,6 +11,14 @@ appFile = "C:\Users\aodon\Desktop\Active_AI_Plus\electron\console.js"
 url = "http://127.0.0.1:18090/"
 psBackend = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""C:\Users\aodon\Desktop\Active_AI_Plus\scripts\start_plus_backend.ps1"""
 
+' 0) OpenViking semantic store (18095). It takes ~90s to load indexes, so start
+'    it detached and NEVER wait: the pet/console must come up immediately.
+'    Backend degrades gracefully (semantic recall returns empty) until it is up.
+rc = sh.Run("cmd /c netstat -ano | find ""127.0.0.1:18095"" | find ""LISTENING"" >nul 2>&1", 0, True)
+If rc <> 0 Then
+  sh.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""C:\Users\aodon\Desktop\Active_AI_Plus\scripts\start_openviking.ps1""", 0, False
+End If
+
 ' 1) backend 18080
 rc = sh.Run("cmd /c netstat -ano | find ""127.0.0.1:18080"" | find ""LISTENING"" >nul 2>&1", 0, True)
 If rc <> 0 Then
