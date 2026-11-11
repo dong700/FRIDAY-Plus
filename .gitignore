@@ -38,3 +38,20 @@ desktop.ini
 .dsh-tmp/
 .dsh-uploads/
 .trae-html-share-packages/
+
+# ---------- 本地素材 / 非运行资料（保留在本机，不上传） ----------
+# Live2D 源工程：运行时只用 frontend/dist/avatar 里的成品，源目录不参与运行
+DeepSeek免费公皮/
+# 别的项目 / 旧实验
+docxbuild/
+_research/
+_backup_*.zip
+# 命题、案例、文档生成脚本
+_命题*
+_优秀案例*.txt
+_门禁参考_*.md
+_gen_*.py
+# 求职与包装材料
+*_敖东邦.html
+DeepMind持续学习架构_*.html
+
