@@ -552,7 +552,15 @@ async def service_stop_api():
     """
     srv = _SERVER_REF
     if srv is None:
-        return {"ok": False, "error": "服务实例未注册（不是由 run_friday 启动的）"}
+        # 兜底：服务不是 run_server.py 起的（拿不到 Server 实例）就直接退进程，
+        # 不然「停止服务」永远只回一句“未注册”，按钮看着像坏的。
+        async def _later_hard():
+            await asyncio.sleep(0.4)   # 先把响应发回去
+            os._exit(0)
+
+        asyncio.create_task(_later_hard())
+        logger.info("[Service] 没有 Server 引用，改为直接退出进程")
+        return {"ok": True, "forced": True}
 
     async def _later():
         await asyncio.sleep(0.3)   # 先把响应发回去再退
@@ -1213,6 +1221,63 @@ async def handle_chat_send(payload: dict) -> dict:
             except Exception as e:
                 logger.warning(f"[VideoFC] 视频工具调用失败: {e}")
 
+        # ★ 走位 Function Calling：让 AI 真的能把桌宠挪过去（而不是嘴上说"我过去啦"）
+        #   只在用户提到位置/移动时启用，避免每条消息多一次模型调用。
+        try:
+            _PET_KW = ("过来", "来这", "来我", "过去", "去那", "去这", "去右", "去左",
+                       "右边", "左边", "角落", "站到", "走到", "移动到", "挪", "走开",
+                       "让开", "靠边", "别挡", "挡着", "换个位置", "换地方", "移动一下",
+                       "跑过来", "靠近", "离远点", "退后", "这边", "那边", "中间")
+            if any(k in content for k in _PET_KW):
+                from brain.tools import BrainTools as _BrainToolsPet
+                _pt = _BrainToolsPet()
+                _pdefs = [t for t in _pt.get_tool_definitions()
+                          if t.get("function", {}).get("name", "").startswith("pet_")]
+                if _pdefs:
+                    messages[0]["content"] += (
+                        "\n\n## 走位控制权限（本次对话可用）\n"
+                        "你能直接控制桌面上自己的位置。用户让你过去/挪开/换位置时，"
+                        "必须调用 pet_move 工具，不要只在嘴上说。\n"
+                        "- x: 0=最左，0.5=中间，1=最右\n"
+                        "- y: 0=最上，1=最下（贴任务栏，一般用 1）\n"
+                        "- seconds: 可选，走过去用多少秒（0=按距离自动）\n"
+                        "调用后再用一句话说明走过去了；没调用就不要说已经动了。"
+                    )
+                    for _pr in range(2):
+                        _pfc = await llm.chat_with_tools(messages, _pdefs)
+                        _ptcs = _pfc.get("tool_calls") or []
+                        if not _ptcs:
+                            break
+                        _pres = []
+                        for _tc in _ptcs:
+                            _pn = _tc.get("name", "")
+                            _pa = _tc.get("arguments", {}) or {}
+                            try:
+                                _r = await _pt.call_tool(_pn, **_pa)
+                            except Exception as _te:
+                                _r = {"success": False, "error": str(_te)}
+                            _pres.append(f"[{_pn}] {json.dumps(_r, ensure_ascii=False)[:400]}")
+                            logger.info(f"[PetFC] {_pn} {json.dumps(_pa, ensure_ascii=False)[:80]}")
+                        _passt = {
+                            "role": "assistant",
+                            "content": _pfc.get("content") or None,
+                            "tool_calls": [
+                                {"id": f"pc_{_pr}_{_i}", "type": "function",
+                                 "function": {"name": _tc.get("name", ""),
+                                              "arguments": json.dumps(_tc.get("arguments") or {},
+                                                                      ensure_ascii=False)}}
+                                for _i, _tc in enumerate(_ptcs)
+                            ],
+                        }
+                        if _pfc.get("reasoning_content"):
+                            _passt["reasoning_content"] = _pfc["reasoning_content"]
+                        messages.append(_passt)
+                        for _i, _r in enumerate(_pres):
+                            messages.append({"role": "tool", "tool_call_id": f"pc_{_pr}_{_i}",
+                                             "content": _r})
+        except Exception as e:
+            logger.warning(f"[PetFC] 走位调用失败: {e}")
+
         # ★ 立绘 Function Calling：让 AI 真的能自己换表情/动作（而不是嘴上说换了）
         #   只在“聊到形象/情绪”时启用，避免每条消息多一次模型调用。
         try:
@@ -1236,6 +1301,8 @@ async def handle_chat_send(payload: dict) -> dict:
                         "- expressions: 要同时生效的表情名列表（可任意组合），例如 [\"脸红\",\"爱心眼\"]\n"
                         "- motion: 可选动作名（idle / speaking / thinking 等）\n"
                         "- seconds: 可选，多少秒后自动恢复\n"
+                        "- persist: 设 true 表示这是持续状态（哭/生气/拿话筒…），一直挂着不自动消失；"
+                        "默认 false 会自己淡出。想收掉再调一次 expressions=[]\n"
                         "调用后再用一句话说明你换了什么；没调用就不要说已经换了。"
                     )
                     for _ar in range(2):

@@ -24,6 +24,8 @@ electron/node_modules/
 
 # ---------- 前端调试产物（dist 本身要保留：src 不可独立构建） ----------
 backend/frontend/dist/**/*.map
+# 打包产物改代码时留的本地备份
+*.orig
 
 # ---------- 编辑器 / 系统 / 本机 ----------
 .trae/

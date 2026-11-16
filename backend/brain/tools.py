@@ -827,13 +827,13 @@ class BrainTools:
             return {"ok": False, "error": str(e)}
 
     async def avatar_expression(self, expressions: list = None, motion: str = "",
-                                seconds: float = 0) -> Dict[str, Any]:
+                                seconds: float = 0, persist: bool = False) -> Dict[str, Any]:
         """给桌面上的大肥鱼换表情/动作。
 
         expressions 是一个数组，可以一次叠加多个（比如 ["爱心眼", "脸红", "兔牙"]），
         传空数组表示清空表情。motion 可选（Idle/Gesture/说话动作等）。
-        表情是临时的：seconds > 0 按指定秒数淡出，不传则约 12 秒后自动恢复，
-        不会一直挂着（想马上收掉就传 expressions=[]）。
+        seconds > 0 按指定秒数淡出；不传则约 12 秒自动恢复。
+        persist=True 表示这是持续状态（哭/生气/拿话筒…），一直挂着直到再调一次清掉。
         """
         try:
             from api.server import manager
@@ -845,9 +845,12 @@ class BrainTools:
                 payload["action"] = str(motion)
             if seconds and float(seconds) > 0:
                 payload["seconds"] = float(seconds)
+            if persist:
+                payload["persist"] = True
             await manager.broadcast({"type": "avatar.action", "payload": payload})
             return {"success": True, "expressions": names,
-                    "motion": motion or None, "seconds": seconds or 0}
+                    "motion": motion or None, "seconds": seconds or 0,
+                    "persist": bool(persist)}
         except Exception as e:
             logger.error(f"[Avatar] expression 失败: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
@@ -1393,7 +1396,10 @@ class BrainTools:
                     "description": (
                         "给桌面上的大肥鱼换表情/动作。expressions 是数组，可以叠加组合，"
                         "比如 [\"爱心眼\",\"脸红\"] 或 [\"黑脸\",\"流冷汗\"]；传 [] 清空。"
-                        "表情是临时的，默认约 12 秒自动淡出，不会一直挂着（想早点收就传 seconds）。"
+                        "多次调用会「叠加」：新加的表情不会把之前挂着的顶掉，想整体收掉就传 []。"
+                        "默认是「一次性表情」：约 12 秒后自动淡出（想早点收就传 seconds）。"
+                        "如果是持续状态（哭、生气、害羞、拿话筒……），设 persist=true 让它一直挂着，"
+                        "之后想收掉再调一次 expressions=[]。"
                         "可用表情：默认体型、体型1、体型2、兔牙、前倾、加载、单片眼镜、圈圈眼、"
                         "尾巴开关、屑屑眼、流冷汗、流泪、爱心眼、竖食指开、竖食指关、胸口衣服、"
                         "脱鞋、脸红、裙子切换、钢盆、黑框眼镜、黑脸、＞＜。"
@@ -1414,6 +1420,10 @@ class BrainTools:
                             "seconds": {
                                 "type": "number",
                                 "description": "多少秒后自动淡出，0/不传 = 默认约 12 秒"
+                            },
+                            "persist": {
+                                "type": "boolean",
+                                "description": "true=这是持续状态，不自动消失，直到之后主动清掉；默认 false=过一会儿自己淡出"
                             }
                         },
                         "required": ["expressions"]

@@ -43,13 +43,17 @@ def _bind_console_to_log() -> None:
 
 if __name__ == "__main__":
     _bind_console_to_log()
-    from api.server import app  # 放到重定向之后导入，logger 才会绑到日志文件
+    from api.server import app, set_server_ref  # 放到重定向之后导入，logger 才会绑到日志文件
 
     port = int(os.getenv("FRIDAY_PLUS_BACKEND_PORT", "18080"))
-    uvicorn.run(
+    # 用 Server 实例而不是 uvicorn.run()：桌宠菜单的「停止服务」要拿到实例设 should_exit，
+    # 否则只能杀进程（之前就是这样，导致停止按钮一直无效）。
+    server = uvicorn.Server(uvicorn.Config(
         app,
         host="127.0.0.1",
         port=port,
         log_level="warning",
         ws="wsproto",   # websockets 16 与旧 uvicorn 的握手不兼容，统一走 wsproto
-    )
+    ))
+    set_server_ref(server)
+    server.run()

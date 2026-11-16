@@ -193,7 +193,7 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
   const bodyCurRef = useRef(BODY_VALUES[Math.max(0, Math.min(2, Math.round(bodyType)))]);
   /** 口型开合（0~1），每帧写进 ParamMouthOpenY */
   const lipRef = useRef(0);
-  /** 全身转动角度（度），鼠标指向哪里身体朝哪边转 */
+  /** 平滑后的跟随量（度）：头用 AngleX/AngleY，身体用 PositionX/LeanInput */
   const lookRef = useRef({ x: 0, y: 0 });
   // ── 表情（可叠加）──
   // 库自带的 expressionManager 同时只保留一个表情；这里直接读 exp3 里的参数，
@@ -213,6 +213,9 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
   // 这样放大是真的多画像素，而不是把 420 宽的位图拉大（那就是"变糊"的来源）。
   const sizeRef = useRef({ w: width, h: height });
   const fitRef = useRef({ baseScale: 1, localW: 3749, localH: 7697, fitZoom: 1 });
+  /** 动作自动回 idle 的计时器：默认时长，AI 给了 seconds 就按它的 */
+  const motionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const DEFAULT_MOTION_HOLD_MS = 5000;
 
   // ?q=1 / model=deepseek_q → 模型自带「体型2」表情（Clothes2 = 1.0，Q 版）
   const isQMode = useMemo(() => {
@@ -262,21 +265,24 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
     }
   }, []);
 
-  /** 真正的叠加入口：sticky=true 表示这是 AI/外部明确点的表情，说话结束也不会被清掉 */
+  /** 真正的叠加入口：sticky=true 表示这是 AI/外部明确点的表情，说话结束也不会被清掉。
+   *  语义是「叠加」：多次调用不会把之前挂的顶掉，只有传空数组才整体清空。 */
   const applyExpr = useCallback((names: string[], sticky: boolean) => {
     const wanted = Array.from(new Set((names || []).map(bareExpr).filter(Boolean)));
     const act = exprActiveRef.current;
-    for (const e of act) e.target = wanted.includes(e.name) ? 1 : 0;
+    if (!wanted.length) for (const e of act) e.target = 0;
     for (const n of wanted) {
       if (exprDefsRef.current.map[n] === undefined) continue;
-      if (!act.some(e => e.name === n)) act.push({ name: n, w: 0, target: 1 });
+      const hit = act.find(e => e.name === n);
+      if (hit) hit.target = 1; else act.push({ name: n, w: 0, target: 1 });
       void loadExprParams(n);
     }
-    exprStickyRef.current = sticky && wanted.length > 0;
+    exprStickyRef.current = sticky && (wanted.length > 0 || act.some(e => e.target > 0));
   }, [loadExprParams]);
 
   /** 同时开若干个表情（传空数组 = 全部关掉）。名字可以带 ".exp3" 也可以不带。
-   *  holdMs：挂多久后自动淡出（默认 12 秒；AI 显式给 seconds 时以它为准，<=0 也按默认收） */
+   *  holdMs：挂多久后自动淡出（默认 12 秒；AI 显式给 seconds 时以它为准）
+   *  persist：true = 这是「状态」而不是一次性动作，一直挂着直到 AI 自己清掉 */
   const clearExpressions = useCallback(() => {
     if (exprTimerRef.current) {
       clearTimeout(exprTimerRef.current);
@@ -286,12 +292,15 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
     exprStickyRef.current = false;
   }, []);
 
-  const setExpressions = useCallback((names: string[], holdMs?: number) => {
+  const setExpressions = useCallback((names: string[], holdMs?: number, persist = false) => {
     applyExpr(names, true);
-    if (exprTimerRef.current) clearTimeout(exprTimerRef.current);
+    if (exprTimerRef.current) {
+      clearTimeout(exprTimerRef.current);
+      exprTimerRef.current = null;
+    }
     const ms = Number(holdMs);
     const hold = Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_EXPR_HOLD_MS;
-    if ((names || []).length) {
+    if (!persist && (names || []).length) {
       exprTimerRef.current = setTimeout(() => clearExpressions(), hold);
     }
   }, [applyExpr, clearExpressions]);
@@ -497,17 +506,31 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
           bodyCurRef.current = next;
           try { core.setParameterValueById(BODY_PARAM, next, 1); } catch { /* ignore */ }
           try { core.setParameterValueById('ParamMouthOpenY', lipRef.current, 1); } catch { /* ignore */ }
-          // 全身转动：鼠标在哪边，整个身体跟着转（不是只有眼球动）。
-          // 用模型自带的 AngleX / AngleY 参数（vtube 系的整身角），慢速插值避免抖动。
+          // 鼠标跟随（头 + 身体）。注意用模型的「物理输入」而不是最终角度：
+          //   AngleX / AngleY  → physics3 的 PhysicsSetting1/2 → ParamAngleX/Y（头）
+          //   PositionX        → PhysicsSetting4 → ParamBodyAngleX（胸腔、手臂、头发一起扭）
+          //   LeanInput        → PhysicsSetting8 → ParamBodyAngleY（身体前后倾）
+          // 直接写 ParamAngleX/ParamBodyAngleX 会被 physics 重新算回去，所以必须走输入。
           try {
             const m = mouseRef.current;
-            const tx = m.active ? m.x * 30 : 0;
-            const ty = m.active ? m.y * 18 : 0;
+            const tx = m.active ? m.x * 18 : 0;
+            const ty = m.active ? m.y * 14 : 0;
             const l = lookRef.current;
-            l.x += (tx - l.x) * 0.12;
-            l.y += (ty - l.y) * 0.12;
+            l.x += (tx - l.x) * 0.15;
+            l.y += (ty - l.y) * 0.15;
             core.setParameterValueById('AngleX', l.x, 1);
             core.setParameterValueById('AngleY', l.y, 1);
+            core.setParameterValueById('PositionX', l.x * 0.6, 1);
+            // 前倾(LeanInput) 是物理输入：physics 在 update 内部才跑，
+            // 必须在之前把「鼠标基准 + 表情贡献」一起写进去，否则前倾类表情等于没调。
+            let lean = l.y * 0.4;
+            for (const e of exprActiveRef.current) {
+              if (e.w < 0.01) continue;
+              const ps = exprParamRef.current.get(e.name);
+              if (!ps) continue;
+              for (const p of ps) if (p.Id === 'LeanInput') lean += p.Value * e.w;
+            }
+            core.setParameterValueById('LeanInput', lean, 1);
           } catch { /* ignore */ }
           try {
             const k = bodyZoom(next);
@@ -550,6 +573,9 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
               const params = exprParamRef.current.get(e.name);
               if (!params || e.w < 0.01) continue;
               for (const p of params) {
+                // LeanInput 是物理输入，已经在 update 之前按「鼠标基准+表情」写过了，
+                // 这里再叠加一次只会加两遍（而且此时 physics 已经跑完，写了也不生效）
+                if (p.Id === 'LeanInput') continue;
                 const cur = core.getParameterValueById(p.Id);
                 if (typeof cur !== 'number') continue;
                 let v = cur;
@@ -558,6 +584,21 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
                 else v = cur + p.Value * e.w;
                 core.setParameterValueById(p.Id, v, 1);
               }
+            }
+            // 前倾(LeanInput=-30) 会被 LeanInput 的量程卡成 0，物理算不出身体前倾。
+            // 这里把表情要的 lean 直接折算成胸腔角度，视觉上才真的会往前栽。
+            let leanSum = 0;
+            for (const e of act) {
+              if (e.w < 0.01) continue;
+              const ps = exprParamRef.current.get(e.name);
+              if (!ps) continue;
+              for (const p of ps) if (p.Id === 'LeanInput') leanSum += p.Value * e.w;
+            }
+            if (leanSum) {
+              const base = Number(core.getParameterValueById('ParamBodyAngleY')) || 0;
+              core.setParameterValueById(
+                'ParamBodyAngleY', Math.max(-25, Math.min(25, base + leanSum * 0.8)), 1,
+              );
             }
           });
         } catch { /* ignore */ }
@@ -637,13 +678,13 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
       try {
         switch (data.type) {
           case 'avatar.speaking':
-            playExpression('speaking');
-            playMotion('speaking');
+            // 说话只换表情（拿话筒）。但 AI 明确挂上的表情/状态优先，不能被开口就顶掉。
+            if (!exprStickyRef.current) playExpression('speaking');
             break;
           case 'avatar.speaking_end':
-            // AI 明确点的表情（组合）保留，只清掉情绪自动表情
+            // AI 明确点的表情（组合）保留，只清掉情绪自动表情；动作不回 idle，
+            // 由动作自己的计时器决定什么时候结束。
             if (!exprStickyRef.current) playExpression('default');
-            playMotion('idle');
             break;
           case 'avatar.listening':
             playExpression('playful');
@@ -654,12 +695,26 @@ export function useLive2D(options: UseLive2DOptions): AvatarController {
             playMotion('think');
             break;
           case 'avatar.action': {
-            // AI 可以一次点一串表情（叠加），也可以只给单个 expression / 动作
-            const { action, expression, expressions, seconds } = data.payload || {};
-            if (action) playMotion(action);
+            // AI 可以一次点一串表情（叠加），也可以只给单个 expression / 动作。
+            // persist=true 表示这是「状态」（哭、生气、拿话筒……），不自动淡出；
+            // 默认 false：动作/表情按 seconds 或默认时长自己收掉。
+            const { action, expression, expressions, seconds, persist } = data.payload || {};
+            const keep = !!persist;
+            if (action) {
+              playMotion(action);
+              // 动作默认 5 秒；AI 给了 seconds 就按它的（可以更长）
+              if (motionTimerRef.current) {
+                clearTimeout(motionTimerRef.current);
+                motionTimerRef.current = null;
+              }
+              if (action !== 'idle' && !keep) {
+                const hold = Number(seconds) > 0 ? Number(seconds) * 1000 : DEFAULT_MOTION_HOLD_MS;
+                motionTimerRef.current = setTimeout(() => playMotion('idle'), hold);
+              }
+            }
             if (Array.isArray(expressions)) {
               const hold = Number(seconds) > 0 ? Number(seconds) * 1000 : undefined;
-              setExpressions(expressions, hold);
+              setExpressions(expressions, hold, keep);
             } else if (expression) playExpression(expression);
             break;
           }

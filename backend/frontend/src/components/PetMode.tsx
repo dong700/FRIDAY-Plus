@@ -153,6 +153,7 @@ export function PetMode() {
       draggingRef.current = false;
       api.dragEnd();
       if (movedRef.current) return;                  // 拖过就不是点击
+      if (hiddenAvatar) { setHiddenAvatar(false); return; }   // 隐藏态：点一下就是唤醒
       const now = Date.now();
       if (now - lastClickRef.current < 320) {        // 双击 = 换体型
         lastClickRef.current = 0;
@@ -237,8 +238,14 @@ export function PetMode() {
     return (
       <div style={{ width: '100vw', height: '100vh', position: 'relative', background: 'transparent' }}>
         <button
-          onClick={() => setHiddenAvatar(false)}
-          title="唤醒虚拟形象"
+          onMouseDown={e => {
+            if (e.button !== 0) return;
+            // 隐藏态只有一个 48px 的小按钮：按住能拖动窗口，松手没动就是唤醒
+            draggingRef.current = true;
+            movedRef.current = false;
+            petAPI()?.dragStart?.();
+          }}
+          title="点一下唤醒，按住可以拖到别处"
           style={{
             position: 'absolute',
             right: 16,
@@ -321,7 +328,7 @@ export function PetMode() {
                 if (e.key === 'Enter') submit();
                 if (e.key === 'Escape') setOpen(false);
               }}
-              placeholder={serviceOn ? '跟她说句话…' : '服务已关，先点「启动服务」'}
+              placeholder={serviceOn ? '跟她说句话…' : '服务已停止，点下面按钮启动'}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -340,11 +347,19 @@ export function PetMode() {
               <span style={{ color: '#cfc8bf', fontSize: 12, width: 36, textAlign: 'center' }}>{scalePct}%</span>
               <button onClick={() => applyScale(scalePct + 10)} style={btnStyle('rgba(90,90,96,0.85)')}>＋</button>
             </div>
-            <button onClick={toggleVision} style={btnStyle(visionOn ? 'rgba(90,90,96,0.85)' : '#3E8E6B')}>
-              {visionOn ? '关视觉' : '开视觉'}
+            <button
+              onClick={toggleVision}
+              title={visionOn ? '视觉正在运行：点一下关闭（不再看屏幕）' : '视觉已关闭：点一下打开'}
+              style={btnStyle(visionOn ? '#3E8E6B' : 'rgba(90,90,96,0.85)')}
+            >
+              {visionOn ? '● 视觉开着' : '○ 视觉关了'}
             </button>
-            <button onClick={toggleService} style={btnStyle(serviceOn ? 'rgba(90,90,96,0.85)' : '#3E8E6B')}>
-              {serviceOn ? '关服务' : '启动服务'}
+            <button
+              onClick={toggleService}
+              title={serviceOn ? '后端在跑：点一下停止（桌宠窗口保留）' : '后端已停：点一下启动'}
+              style={btnStyle(serviceOn ? '#3E8E6B' : 'rgba(90,90,96,0.85)')}
+            >
+              {busy ? '◌ 处理中…' : serviceOn ? '● 服务运行中' : '○ 服务已停止'}
             </button>
             <button onClick={() => setHiddenAvatar(true)} style={btnStyle('rgba(90,90,96,0.85)')}>
               隐藏

@@ -161,6 +161,8 @@ function createWindow() {
     skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
+    // 任务栏/Alt-Tab 里用角色头像，而不是 Electron 的原子图标
+    icon: path.join(__dirname, 'friday.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -519,12 +521,13 @@ app.whenReady().then(async () => {
           },
         });
       backendProc.on('exit', () => { backendProc = null; });
-      // 等后端真的起来再报成功：模型/记忆初始化要十几秒，8 秒会把正常启动误判成失败
-      const ok = await waitBackend(20000);
+      // 等后端真的起来再报成功：uvicorn 是先跑完 startup（恢复 TFGR/RAG 记忆）才 bind 端口，
+      // 记忆多的时候要 30 秒以上，20 秒会把正常启动误判成失败、连带把进程杀掉。
+      const ok = await waitBackend(60000);
       if (!ok) {
         try { backendProc && backendProc.kill(); } catch { /* ignore */ }
         backendProc = null;
-        return { ok: false, error: '后端 20 秒内没起来（看 D:/FRIDAY/logs/backend_service.log）' };
+        return { ok: false, error: '后端 60 秒内没起来（看 D:/FRIDAY/logs/plus_backend.log）' };
       }
       return { ok: true };
     } catch (e) {
